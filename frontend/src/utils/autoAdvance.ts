@@ -12,6 +12,15 @@ export function checkAndAutoWinBYE(matches: Match[]): Match[] {
     const p1IsBye = match.participant1?.name === 'BYE'
     const p2IsBye = match.participant2?.name === 'BYE'
 
+    // Special case: BYE vs BYE in round 1 of loser bracket is allowed
+    // In this case, advance participant1 (first BYE)
+    if (p1IsBye && p2IsBye && match.id.startsWith('l-r1-')) {
+      match.score1 = 1
+      match.score2 = 0
+      match.winner = match.participant1
+      return
+    }
+
     if (p1IsBye && match.participant2) {
       // Participant 2 wins automatically
       match.score1 = 0
@@ -41,8 +50,18 @@ export function autoAdvanceWinners(
 
   if (!currentMatch) return updatedMatches
 
-  const winner = participants.find(p => p.id === winnerId)
-  const loser = participants.find(p => p.id === loserId)
+  // Get winner and loser from participants array OR from the current match
+  // This ensures BYEs (which aren't in participants array) are properly handled
+  let winner = participants.find(p => p.id === winnerId)
+  let loser = participants.find(p => p.id === loserId)
+
+  // If not found in participants (e.g., BYE), get from current match
+  if (!winner) {
+    winner = currentMatch.participant1?.id === winnerId ? currentMatch.participant1 : currentMatch.participant2
+  }
+  if (!loser) {
+    loser = currentMatch.participant1?.id === loserId ? currentMatch.participant1 : currentMatch.participant2
+  }
 
   // Handle single elimination and group stage knockout
   if (bracketType === 'single-elimination' || currentMatch.id.startsWith('knockout-')) {
