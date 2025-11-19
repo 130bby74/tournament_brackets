@@ -1,5 +1,25 @@
 import { Participant, Match, BracketType } from '../types'
 
+// Generate standard tournament seeding order to prevent BYE vs BYE matches
+function getStandardSeeding(numParticipants: number): number[] {
+  const rounds = Math.log2(numParticipants)
+  let seeds = [1]
+
+  for (let round = 0; round < rounds; round++) {
+    const newSeeds: number[] = []
+    const maxSeed = Math.pow(2, round + 1)
+
+    for (const seed of seeds) {
+      newSeeds.push(seed)
+      newSeeds.push(maxSeed + 1 - seed)
+    }
+
+    seeds = newSeeds
+  }
+
+  return seeds
+}
+
 export function generateSingleEliminationBracket(participants: Participant[]): Match[] {
   const matches: Match[] = []
   let participantsCopy = [...participants]
@@ -10,18 +30,22 @@ export function generateSingleEliminationBracket(participants: Participant[]): M
     participantsCopy.push({ id: `bye-${participantsCopy.length}`, name: 'BYE' })
   }
 
+  // Apply standard tournament seeding to prevent BYE vs BYE
+  const seeding = getStandardSeeding(nextPowerOf2)
+  const seededParticipants = seeding.map(seed => participantsCopy[seed - 1])
+
   let currentRound = 1
   let matchCounter = 1
   let currentMatches: Match[] = []
 
-  // First round
-  for (let i = 0; i < participantsCopy.length; i += 2) {
+  // First round with proper seeding
+  for (let i = 0; i < seededParticipants.length; i += 2) {
     const match: Match = {
       id: `match-${matchCounter}`,
       round: currentRound,
       matchNumber: matchCounter,
-      participant1: participantsCopy[i],
-      participant2: participantsCopy[i + 1],
+      participant1: seededParticipants[i],
+      participant2: seededParticipants[i + 1],
     }
     currentMatches.push(match)
     matches.push(match)
@@ -64,6 +88,10 @@ export function generateDoubleEliminationBracket(participants: Participant[]): M
     participantsCopy.push({ id: `bye-${participantsCopy.length}`, name: 'BYE' })
   }
 
+  // Apply standard tournament seeding to prevent BYE vs BYE
+  const seeding = getStandardSeeding(nextPowerOf2)
+  const seededParticipants = seeding.map(seed => participantsCopy[seed - 1])
+
   const totalRounds = Math.log2(nextPowerOf2)
 
   // Generate Winners Bracket (similar to single elimination)
@@ -72,14 +100,14 @@ export function generateDoubleEliminationBracket(participants: Participant[]): M
   let currentMatches: Match[] = []
   const winnersBracketMatches: Match[] = []
 
-  // First round of winners bracket
-  for (let i = 0; i < participantsCopy.length; i += 2) {
+  // First round of winners bracket with proper seeding
+  for (let i = 0; i < seededParticipants.length; i += 2) {
     const match: Match = {
       id: `w-r${currentRound}-m${matchCounter}`,
       round: currentRound,
       matchNumber: matchCounter,
-      participant1: participantsCopy[i],
-      participant2: participantsCopy[i + 1],
+      participant1: seededParticipants[i],
+      participant2: seededParticipants[i + 1],
     }
     currentMatches.push(match)
     winnersBracketMatches.push(match)

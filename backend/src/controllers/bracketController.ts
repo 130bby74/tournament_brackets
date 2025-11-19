@@ -3,7 +3,7 @@ import * as db from '../db.js'
 
 export const createBracket = async (req: Request, res: Response) => {
   try {
-    const { name, type, participants, matches } = req.body
+    const { name, type, participants, matches, groupSize, qualifiersPerGroup, knockoutMatches } = req.body
 
     if (!name || !type || !participants) {
       return res.status(400).json({ error: 'Missing required fields' })
@@ -14,6 +14,9 @@ export const createBracket = async (req: Request, res: Response) => {
       type,
       participants,
       matches: matches || [],
+      groupSize,
+      qualifiersPerGroup,
+      knockoutMatches,
     })
 
     res.status(201).json(bracket)
