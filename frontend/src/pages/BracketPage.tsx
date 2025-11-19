@@ -29,7 +29,8 @@ function BracketPage() {
 
       // Generate matches if not already present
       if (!loadedBracket.matches || loadedBracket.matches.length === 0) {
-        loadedBracket.matches = generateBracket(loadedBracket.type, loadedBracket.participants)
+        const groupSize = loadedBracket.groupSize || 4
+        loadedBracket.matches = generateBracket(loadedBracket.type, loadedBracket.participants, groupSize)
       }
 
       setBracket(loadedBracket)
@@ -162,6 +163,9 @@ function BracketPage() {
           <GroupStageBracket
             matches={bracket.matches}
             participants={bracket.participants}
+            knockoutMatches={bracket.knockoutMatches}
+            groupSize={bracket.groupSize}
+            qualifiersPerGroup={bracket.qualifiersPerGroup}
             onUpdateMatch={handleUpdateMatch}
           />
         )}

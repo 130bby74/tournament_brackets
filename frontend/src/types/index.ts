@@ -27,6 +27,9 @@ export interface Bracket {
   matches: Match[]
   createdAt?: Date
   updatedAt?: Date
+  groupSize?: number // For group stage: number of players per group (2-8)
+  qualifiersPerGroup?: number // For group stage: how many advance to knockout (default: 2)
+  knockoutMatches?: Match[] // For group stage: knockout phase matches
 }
 
 export interface GroupStageGroup {

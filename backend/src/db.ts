@@ -34,6 +34,9 @@ export interface Bracket {
   matches: Match[]
   createdAt: string
   updatedAt: string
+  groupSize?: number
+  qualifiersPerGroup?: number
+  knockoutMatches?: Match[]
 }
 
 // Ensure data directory exists

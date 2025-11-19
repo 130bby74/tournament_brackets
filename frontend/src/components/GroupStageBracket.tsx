@@ -1,24 +1,52 @@
 import { useState, useEffect } from 'react'
 import { Match, Participant, GroupStanding } from '../types'
+import SingleEliminationBracket from './SingleEliminationBracket'
+import { generateKnockoutMatches } from '../utils/bracketGenerator'
 
 interface GroupStageBracketProps {
   matches: Match[]
   participants: Participant[]
+  knockoutMatches?: Match[]
+  groupSize?: number
+  qualifiersPerGroup?: number
   onUpdateMatch?: (matchId: string, score1: number, score2: number, winnerId: string) => void
 }
 
-function GroupStageBracket({ matches, participants, onUpdateMatch }: GroupStageBracketProps) {
+function GroupStageBracket({
+  matches,
+  participants,
+  knockoutMatches: initialKnockoutMatches,
+  groupSize = 4,
+  qualifiersPerGroup = 2,
+  onUpdateMatch
+}: GroupStageBracketProps) {
   const [groups, setGroups] = useState<Map<number, { participants: Participant[], matches: Match[], standings: GroupStanding[] }>>(new Map())
+  const [knockoutMatches, setKnockoutMatches] = useState<Match[]>(initialKnockoutMatches || [])
+  const [qualifiedParticipants, setQualifiedParticipants] = useState<Participant[]>([])
 
   useEffect(() => {
     organizeGroups()
   }, [matches, participants])
 
+  useEffect(() => {
+    // Check if all group matches are complete
+    const allGroupMatchesComplete = matches.every(m =>
+      m.score1 !== undefined && m.score2 !== undefined
+    )
+
+    if (allGroupMatchesComplete && groups.size > 0) {
+      updateQualifiedParticipants()
+    }
+  }, [groups, matches])
+
   const organizeGroups = () => {
     const groupMap = new Map<number, { participants: Participant[], matches: Match[], standings: GroupStanding[] }>()
 
     // Organize matches by group (using round as group identifier)
-    matches.forEach(match => {
+    // Filter out knockout matches
+    const groupStageMatches = matches.filter(m => !m.id.startsWith('knockout-'))
+
+    groupStageMatches.forEach(match => {
       const groupId = match.round
       if (!groupMap.has(groupId)) {
         groupMap.set(groupId, { participants: [], matches: [], standings: [] })
@@ -43,6 +71,24 @@ function GroupStageBracket({ matches, participants, onUpdateMatch }: GroupStageB
     })
 
     setGroups(groupMap)
+  }
+
+  const updateQualifiedParticipants = () => {
+    const qualified: Participant[] = []
+
+    // Get top N from each group
+    groups.forEach(group => {
+      const topN = group.standings.slice(0, qualifiersPerGroup)
+      qualified.push(...topN.map(s => s.participant))
+    })
+
+    setQualifiedParticipants(qualified)
+
+    // Generate knockout matches if not already present
+    if (qualified.length >= 2 && knockoutMatches.length === 0) {
+      const newKnockoutMatches = generateKnockoutMatches(qualified)
+      setKnockoutMatches(newKnockoutMatches)
+    }
   }
 
   const calculateGroupStandings = (matches: Match[], participants: Participant[]): GroupStanding[] => {
@@ -87,84 +133,169 @@ function GroupStageBracket({ matches, participants, onUpdateMatch }: GroupStageB
     })
   }
 
+  const handleKnockoutMatchUpdate = (matchId: string, score1: number, score2: number, winnerId: string) => {
+    if (!onUpdateMatch) return
+
+    // Update the knockout match
+    const updatedKnockoutMatches = knockoutMatches.map(match => {
+      if (match.id === matchId) {
+        const winner = qualifiedParticipants.find(p => p.id === winnerId)
+        return { ...match, score1, score2, winner }
+      }
+      return match
+    })
+
+    setKnockoutMatches(updatedKnockoutMatches)
+    onUpdateMatch(matchId, score1, score2, winnerId)
+  }
+
+  const allGroupMatchesComplete = matches.every(m =>
+    m.score1 !== undefined && m.score2 !== undefined
+  )
+
   return (
     <div className="space-y-8">
-      {Array.from(groups.entries()).map(([groupId, group]) => (
-        <div key={groupId} className="bg-white rounded-lg shadow-lg overflow-hidden">
-          <div className="bg-gradient-to-r from-primary-600 to-primary-700 px-6 py-4">
-            <h2 className="text-2xl font-bold text-white">
-              Group {String.fromCharCode(65 + groupId - 1)}
-            </h2>
-          </div>
+      {/* Group Stage Section */}
+      <div>
+        <div className="bg-gradient-to-r from-purple-600 to-purple-700 px-6 py-4 rounded-t-lg">
+          <h2 className="text-2xl font-bold text-white">Group Stage</h2>
+          <p className="text-purple-100 text-sm mt-1">
+            Top {qualifiersPerGroup} from each group advance to knockout stage
+          </p>
+        </div>
 
-          <div className="p-6">
-            {/* Standings */}
-            <div className="mb-6">
-              <h3 className="text-lg font-semibold text-gray-800 mb-3">Standings</h3>
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-gray-50 border-b border-gray-200">
-                    <tr>
-                      <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700 uppercase">
-                        Pos
-                      </th>
-                      <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700 uppercase">
-                        Participant
-                      </th>
-                      <th className="px-4 py-2 text-center text-xs font-semibold text-gray-700 uppercase">
-                        W
-                      </th>
-                      <th className="px-4 py-2 text-center text-xs font-semibold text-gray-700 uppercase">
-                        D
-                      </th>
-                      <th className="px-4 py-2 text-center text-xs font-semibold text-gray-700 uppercase">
-                        L
-                      </th>
-                      <th className="px-4 py-2 text-center text-xs font-semibold text-gray-700 uppercase">
-                        Pts
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200">
-                    {group.standings.map((standing, index) => (
-                      <tr key={standing.participant.id} className={index < 2 ? 'bg-green-50' : ''}>
-                        <td className="px-4 py-2 text-sm font-medium text-gray-900">
-                          {index + 1}
-                        </td>
-                        <td className="px-4 py-2 text-sm text-gray-900">
-                          {standing.participant.name}
-                        </td>
-                        <td className="px-4 py-2 text-center text-sm text-green-600 font-semibold">
-                          {standing.wins}
-                        </td>
-                        <td className="px-4 py-2 text-center text-sm text-gray-600">
-                          {standing.draws}
-                        </td>
-                        <td className="px-4 py-2 text-center text-sm text-red-600 font-semibold">
-                          {standing.losses}
-                        </td>
-                        <td className="px-4 py-2 text-center text-sm font-bold text-primary-600">
-                          {standing.points}
-                        </td>
-                      </tr>
+        <div className="space-y-8 mt-4">
+          {Array.from(groups.entries()).map(([groupId, group]) => (
+            <div key={groupId} className="bg-white rounded-lg shadow-lg overflow-hidden">
+              <div className="bg-purple-100 px-6 py-3 border-b-2 border-purple-200">
+                <h3 className="text-xl font-bold text-purple-900">
+                  Group {String.fromCharCode(65 + groupId - 1)}
+                </h3>
+              </div>
+
+              <div className="p-6">
+                {/* Standings */}
+                <div className="mb-6">
+                  <h4 className="text-lg font-semibold text-gray-800 mb-3">Standings</h4>
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead className="bg-gray-50 border-b border-gray-200">
+                        <tr>
+                          <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700 uppercase">
+                            Pos
+                          </th>
+                          <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700 uppercase">
+                            Participant
+                          </th>
+                          <th className="px-4 py-2 text-center text-xs font-semibold text-gray-700 uppercase">
+                            W
+                          </th>
+                          <th className="px-4 py-2 text-center text-xs font-semibold text-gray-700 uppercase">
+                            D
+                          </th>
+                          <th className="px-4 py-2 text-center text-xs font-semibold text-gray-700 uppercase">
+                            L
+                          </th>
+                          <th className="px-4 py-2 text-center text-xs font-semibold text-gray-700 uppercase">
+                            Pts
+                          </th>
+                          <th className="px-4 py-2 text-center text-xs font-semibold text-gray-700 uppercase">
+                            Status
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        {group.standings.map((standing, index) => {
+                          const isQualified = index < qualifiersPerGroup
+                          return (
+                            <tr key={standing.participant.id} className={isQualified ? 'bg-green-50' : ''}>
+                              <td className="px-4 py-2 text-sm font-medium text-gray-900">
+                                {index + 1}
+                              </td>
+                              <td className="px-4 py-2 text-sm text-gray-900">
+                                {standing.participant.name}
+                              </td>
+                              <td className="px-4 py-2 text-center text-sm text-green-600 font-semibold">
+                                {standing.wins}
+                              </td>
+                              <td className="px-4 py-2 text-center text-sm text-gray-600">
+                                {standing.draws}
+                              </td>
+                              <td className="px-4 py-2 text-center text-sm text-red-600 font-semibold">
+                                {standing.losses}
+                              </td>
+                              <td className="px-4 py-2 text-center text-sm font-bold text-purple-600">
+                                {standing.points}
+                              </td>
+                              <td className="px-4 py-2 text-center">
+                                {allGroupMatchesComplete && isQualified && (
+                                  <span className="inline-flex items-center px-2 py-1 text-xs font-semibold text-green-800 bg-green-100 rounded-full">
+                                    ✓ Qualified
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Matches */}
+                <div>
+                  <h4 className="text-lg font-semibold text-gray-800 mb-3">Matches</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {group.matches.map(match => (
+                      <MatchCard key={match.id} match={match} onUpdateMatch={onUpdateMatch} />
                     ))}
-                  </tbody>
-                </table>
+                  </div>
+                </div>
               </div>
             </div>
+          ))}
+        </div>
+      </div>
 
-            {/* Matches */}
-            <div>
-              <h3 className="text-lg font-semibold text-gray-800 mb-3">Matches</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {group.matches.map(match => (
-                  <MatchCard key={match.id} match={match} onUpdateMatch={onUpdateMatch} />
-                ))}
+      {/* Knockout Stage Section */}
+      {allGroupMatchesComplete && qualifiedParticipants.length >= 2 && (
+        <div className="bg-white rounded-lg shadow-lg overflow-hidden">
+          <div className="bg-gradient-to-r from-orange-600 to-red-600 px-6 py-4">
+            <h2 className="text-2xl font-bold text-white">Knockout Stage</h2>
+            <p className="text-orange-100 text-sm mt-1">
+              {qualifiedParticipants.length} qualified participants - Single elimination
+            </p>
+          </div>
+          <div className="p-6">
+            {knockoutMatches.length > 0 ? (
+              <SingleEliminationBracket
+                matches={knockoutMatches}
+                onUpdateMatch={handleKnockoutMatchUpdate}
+              />
+            ) : (
+              <div className="text-center py-8 text-gray-600">
+                Generating knockout bracket...
               </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {!allGroupMatchesComplete && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6">
+          <div className="flex items-start">
+            <span className="text-2xl mr-3">⏳</span>
+            <div>
+              <h3 className="text-lg font-semibold text-yellow-900 mb-1">
+                Group Stage In Progress
+              </h3>
+              <p className="text-yellow-800">
+                Complete all group stage matches to unlock the knockout phase.
+              </p>
             </div>
           </div>
         </div>
-      ))}
+      )}
     </div>
   )
 }

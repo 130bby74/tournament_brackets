@@ -139,7 +139,7 @@ export function generateGroupStageMatches(participants: Participant[], groupSize
   return matches
 }
 
-export function generateBracket(type: BracketType, participants: Participant[]): Match[] {
+export function generateBracket(type: BracketType, participants: Participant[], groupSize: number = 4): Match[] {
   switch (type) {
     case 'single-elimination':
       return generateSingleEliminationBracket(participants)
@@ -148,8 +148,16 @@ export function generateBracket(type: BracketType, participants: Participant[]):
     case 'round-robin':
       return generateRoundRobinMatches(participants)
     case 'group-stage':
-      return generateGroupStageMatches(participants)
+      return generateGroupStageMatches(participants, groupSize)
     default:
       return []
   }
+}
+
+export function generateKnockoutMatches(qualifiedParticipants: Participant[]): Match[] {
+  // Generate a single elimination bracket for qualified players
+  return generateSingleEliminationBracket(qualifiedParticipants).map(match => ({
+    ...match,
+    id: `knockout-${match.id}`,
+  }))
 }
