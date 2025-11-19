@@ -55,35 +55,179 @@ export function generateSingleEliminationBracket(participants: Participant[]): M
 }
 
 export function generateDoubleEliminationBracket(participants: Participant[]): Match[] {
-  // For simplicity, generate winners bracket similar to single elimination
-  // Plus a losers bracket
   const matches: Match[] = []
-  const winnersBracket = generateSingleEliminationBracket(participants)
+  let participantsCopy = [...participants]
 
-  // Add winners bracket
-  matches.push(...winnersBracket.map(m => ({ ...m, id: `w-${m.id}` })))
+  // Pad to next power of 2
+  const nextPowerOf2 = Math.pow(2, Math.ceil(Math.log2(participantsCopy.length)))
+  while (participantsCopy.length < nextPowerOf2) {
+    participantsCopy.push({ id: `bye-${participantsCopy.length}`, name: 'BYE' })
+  }
 
-  // Generate losers bracket (simplified version)
-  // In a full implementation, this would be more complex
-  const losersRounds = Math.ceil(Math.log2(participants.length))
+  const totalRounds = Math.log2(nextPowerOf2)
+
+  // Generate Winners Bracket (similar to single elimination)
+  let currentRound = 1
   let matchCounter = 1
+  let currentMatches: Match[] = []
+  const winnersBracketMatches: Match[] = []
 
-  for (let round = 1; round <= losersRounds * 2 - 1; round++) {
+  // First round of winners bracket
+  for (let i = 0; i < participantsCopy.length; i += 2) {
     const match: Match = {
-      id: `l-match-${matchCounter}`,
-      round: round,
+      id: `w-r${currentRound}-m${matchCounter}`,
+      round: currentRound,
       matchNumber: matchCounter,
+      participant1: participantsCopy[i],
+      participant2: participantsCopy[i + 1],
     }
-    matches.push(match)
+    currentMatches.push(match)
+    winnersBracketMatches.push(match)
     matchCounter++
   }
 
-  // Grand finals
-  matches.push({
+  // Subsequent rounds of winners bracket
+  let winnersRound = currentRound
+  while (currentMatches.length > 1) {
+    winnersRound++
+    const nextRoundMatches: Match[] = []
+    matchCounter = 1
+
+    for (let i = 0; i < currentMatches.length; i += 2) {
+      const match: Match = {
+        id: `w-r${winnersRound}-m${matchCounter}`,
+        round: winnersRound,
+        matchNumber: matchCounter,
+      }
+
+      currentMatches[i].nextMatchId = match.id
+      currentMatches[i + 1].nextMatchId = match.id
+
+      nextRoundMatches.push(match)
+      winnersBracketMatches.push(match)
+      matchCounter++
+    }
+
+    currentMatches = nextRoundMatches
+  }
+
+  // Generate Losers Bracket
+  const losersBracketMatches: Match[] = []
+  let losersRound = 1
+  matchCounter = 1
+
+  // The losers bracket has two types of rounds:
+  // - Type A: Losers from winners bracket meet each other
+  // - Type B: Winners from previous losers round meet new losers from winners bracket
+
+  // Calculate number of participants that will drop to losers bracket from each winners round
+  let losersFromWinnersRounds: number[] = []
+  let tempParticipants = nextPowerOf2
+  for (let i = 1; i <= totalRounds; i++) {
+    losersFromWinnersRounds.push(tempParticipants / 2)
+    tempParticipants = tempParticipants / 2
+  }
+
+  // Round 1 of losers bracket: First round losers from winners bracket meet
+  const firstRoundLosersCount = losersFromWinnersRounds[0]
+  const losersRound1Matches: Match[] = []
+  for (let i = 0; i < firstRoundLosersCount / 2; i++) {
+    const match: Match = {
+      id: `l-r${losersRound}-m${i + 1}`,
+      round: losersRound,
+      matchNumber: i + 1,
+    }
+    losersRound1Matches.push(match)
+    losersBracketMatches.push(match)
+  }
+
+  // Link winners bracket round 1 losers to losers bracket round 1
+  for (let i = 0; i < winnersBracketMatches.length && i < losersFromWinnersRounds[0]; i++) {
+    if (winnersBracketMatches[i].round === 1) {
+      const loserMatchIndex = Math.floor(i / 2)
+      winnersBracketMatches[i].loserNextMatchId = losersRound1Matches[loserMatchIndex]?.id
+    }
+  }
+
+  let previousLosersMatches = losersRound1Matches
+  losersRound++
+
+  // Continue building losers bracket
+  for (let winnersRoundIndex = 2; winnersRoundIndex <= totalRounds; winnersRoundIndex++) {
+    // Type B round: Winners from previous losers round meet losers from current winners round
+    if (previousLosersMatches.length > 0) {
+      const typeARoundMatches: Match[] = []
+      matchCounter = 1
+
+      for (let i = 0; i < previousLosersMatches.length; i++) {
+        const match: Match = {
+          id: `l-r${losersRound}-m${matchCounter}`,
+          round: losersRound,
+          matchNumber: matchCounter,
+        }
+
+        // Previous losers round winner goes here
+        previousLosersMatches[i].nextMatchId = match.id
+
+        typeARoundMatches.push(match)
+        losersBracketMatches.push(match)
+        matchCounter++
+      }
+
+      // Link losers from current winners round to these matches
+      const currentWinnersMatches = winnersBracketMatches.filter(m => m.round === winnersRoundIndex)
+      for (let i = 0; i < currentWinnersMatches.length; i++) {
+        currentWinnersMatches[i].loserNextMatchId = typeARoundMatches[i]?.id
+      }
+
+      previousLosersMatches = typeARoundMatches
+      losersRound++
+
+      // Type A round: Winners from type B round meet each other (if more than one match)
+      if (typeARoundMatches.length > 1) {
+        const typeBRoundMatches: Match[] = []
+        matchCounter = 1
+
+        for (let i = 0; i < typeARoundMatches.length; i += 2) {
+          const match: Match = {
+            id: `l-r${losersRound}-m${matchCounter}`,
+            round: losersRound,
+            matchNumber: matchCounter,
+          }
+
+          typeARoundMatches[i].nextMatchId = match.id
+          if (typeARoundMatches[i + 1]) {
+            typeARoundMatches[i + 1].nextMatchId = match.id
+          }
+
+          typeBRoundMatches.push(match)
+          losersBracketMatches.push(match)
+          matchCounter++
+        }
+
+        previousLosersMatches = typeBRoundMatches
+        losersRound++
+      }
+    }
+  }
+
+  // Grand Finals
+  const grandFinals: Match = {
     id: 'grand-finals',
-    round: losersRounds * 2,
-    matchNumber: matchCounter,
-  })
+    round: losersRound,
+    matchNumber: 1,
+  }
+
+  // Link winners bracket finals winner to grand finals
+  const winnersFinals = winnersBracketMatches[winnersBracketMatches.length - 1]
+  winnersFinals.nextMatchId = grandFinals.id
+
+  // Link losers bracket finals winner to grand finals
+  if (previousLosersMatches.length > 0) {
+    previousLosersMatches[previousLosersMatches.length - 1].nextMatchId = grandFinals.id
+  }
+
+  matches.push(...winnersBracketMatches, ...losersBracketMatches, grandFinals)
 
   return matches
 }

@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { Bracket, Match, Participant } from '../types'
 import { getBracket, updateBracket } from '../services/api'
 import { generateBracket } from '../utils/bracketGenerator'
-import { autoAdvanceWinners } from '../utils/autoAdvance'
+import { autoAdvanceWinners, checkAndAutoWinBYE } from '../utils/autoAdvance'
 import SingleEliminationBracket from '../components/SingleEliminationBracket'
 import DoubleEliminationBracket from '../components/DoubleEliminationBracket'
 import RoundRobinBracket from '../components/RoundRobinBracket'
@@ -35,6 +35,28 @@ function BracketPage() {
         const groupSize = loadedBracket.groupSize || 4
         loadedBracket.matches = generateBracket(loadedBracket.type, loadedBracket.participants, groupSize)
       }
+
+      // Check for BYE matches and auto-advance
+      loadedBracket.matches = checkAndAutoWinBYE(loadedBracket.matches)
+
+      // Auto-advance any BYE wins through the bracket
+      loadedBracket.matches.forEach(match => {
+        if (match.winner && match.participant1 && match.participant2) {
+          const winnerId = match.winner.id
+          const loserId = match.winner.id === match.participant1.id
+            ? match.participant2.id
+            : match.participant1.id
+
+          loadedBracket.matches = autoAdvanceWinners(
+            loadedBracket.matches,
+            match.id,
+            winnerId,
+            loserId,
+            loadedBracket.participants,
+            loadedBracket.type
+          )
+        }
+      })
 
       setBracket(loadedBracket)
     } catch (err) {

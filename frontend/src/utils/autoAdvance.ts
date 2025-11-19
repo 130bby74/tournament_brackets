@@ -1,5 +1,33 @@
 import { Match, Participant, BracketType } from '../types'
 
+export function checkAndAutoWinBYE(matches: Match[]): Match[] {
+  // Automatically award wins for matches against BYE opponents
+  const updatedMatches = [...matches]
+
+  updatedMatches.forEach(match => {
+    // Skip if match already has a winner
+    if (match.winner) return
+
+    // Check if one participant is BYE
+    const p1IsBye = match.participant1?.name === 'BYE'
+    const p2IsBye = match.participant2?.name === 'BYE'
+
+    if (p1IsBye && match.participant2) {
+      // Participant 2 wins automatically
+      match.score1 = 0
+      match.score2 = 1
+      match.winner = match.participant2
+    } else if (p2IsBye && match.participant1) {
+      // Participant 1 wins automatically
+      match.score1 = 1
+      match.score2 = 0
+      match.winner = match.participant1
+    }
+  })
+
+  return updatedMatches
+}
+
 export function autoAdvanceWinners(
   matches: Match[],
   updatedMatchId: string,
@@ -8,7 +36,7 @@ export function autoAdvanceWinners(
   participants: Participant[],
   bracketType: BracketType
 ): Match[] {
-  const updatedMatches = [...matches]
+  let updatedMatches = [...matches]
   const currentMatch = updatedMatches.find(m => m.id === updatedMatchId)
 
   if (!currentMatch) return updatedMatches
@@ -38,6 +66,27 @@ export function autoAdvanceWinners(
             nextMatch.participant2 = winner
           }
         }
+
+        // Check if the next match now has a BYE opponent and auto-advance if so
+        updatedMatches = checkAndAutoWinBYE(updatedMatches)
+
+        // If next match has auto-win, recursively advance
+        const updatedNextMatch = updatedMatches.find(m => m.id === nextMatch.id)
+        if (updatedNextMatch?.winner && updatedNextMatch.participant1 && updatedNextMatch.participant2) {
+          const nextWinnerId = updatedNextMatch.winner.id
+          const nextLoserId = updatedNextMatch.winner.id === updatedNextMatch.participant1.id
+            ? updatedNextMatch.participant2.id
+            : updatedNextMatch.participant1.id
+
+          updatedMatches = autoAdvanceWinners(
+            updatedMatches,
+            updatedNextMatch.id,
+            nextWinnerId,
+            nextLoserId,
+            participants,
+            bracketType
+          )
+        }
       }
     }
   }
@@ -62,6 +111,27 @@ export function autoAdvanceWinners(
             nextMatch.participant2 = winner
           }
         }
+
+        // Check if the next match now has a BYE opponent and auto-advance if so
+        updatedMatches = checkAndAutoWinBYE(updatedMatches)
+
+        // If next match has auto-win, recursively advance
+        const updatedNextMatch = updatedMatches.find(m => m.id === nextMatch.id)
+        if (updatedNextMatch?.winner && updatedNextMatch.participant1 && updatedNextMatch.participant2) {
+          const nextWinnerId = updatedNextMatch.winner.id
+          const nextLoserId = updatedNextMatch.winner.id === updatedNextMatch.participant1.id
+            ? updatedNextMatch.participant2.id
+            : updatedNextMatch.participant1.id
+
+          updatedMatches = autoAdvanceWinners(
+            updatedMatches,
+            updatedNextMatch.id,
+            nextWinnerId,
+            nextLoserId,
+            participants,
+            bracketType
+          )
+        }
       }
     }
 
@@ -69,10 +139,36 @@ export function autoAdvanceWinners(
     if (currentMatch.id.startsWith('w-') && currentMatch.loserNextMatchId && loser) {
       const loserNextMatch = updatedMatches.find(m => m.id === currentMatch.loserNextMatchId)
       if (loserNextMatch) {
-        if (!loserNextMatch.participant1) {
+        // Determine which slot the loser should go into
+        // Check which slots are already occupied by checking loserNextMatchId references
+        const matchesFeedingToLoserMatch = updatedMatches.filter(m => m.loserNextMatchId === loserNextMatch.id)
+        const currentMatchIndexInFeeders = matchesFeedingToLoserMatch.findIndex(m => m.id === currentMatch.id)
+
+        if (currentMatchIndexInFeeders === 0 || !loserNextMatch.participant1) {
           loserNextMatch.participant1 = loser
-        } else if (!loserNextMatch.participant2) {
+        } else {
           loserNextMatch.participant2 = loser
+        }
+
+        // Check if the loser match now has a BYE opponent and auto-advance if so
+        updatedMatches = checkAndAutoWinBYE(updatedMatches)
+
+        // If loser match has auto-win, recursively advance
+        const updatedLoserMatch = updatedMatches.find(m => m.id === loserNextMatch.id)
+        if (updatedLoserMatch?.winner && updatedLoserMatch.participant1 && updatedLoserMatch.participant2) {
+          const nextWinnerId = updatedLoserMatch.winner.id
+          const nextLoserId = updatedLoserMatch.winner.id === updatedLoserMatch.participant1.id
+            ? updatedLoserMatch.participant2.id
+            : updatedLoserMatch.participant1.id
+
+          updatedMatches = autoAdvanceWinners(
+            updatedMatches,
+            updatedLoserMatch.id,
+            nextWinnerId,
+            nextLoserId,
+            participants,
+            bracketType
+          )
         }
       }
     }
@@ -81,24 +177,59 @@ export function autoAdvanceWinners(
     if (currentMatch.id.startsWith('l-') && currentMatch.nextMatchId && winner) {
       const nextMatch = updatedMatches.find(m => m.id === currentMatch.nextMatchId)
       if (nextMatch) {
-        const previousMatches = updatedMatches.filter(m => m.nextMatchId === nextMatch.id)
-        const matchIndex = previousMatches.findIndex(m => m.id === currentMatch.id)
+        // Check if this next match receives losers from winners bracket
+        const hasLoserFeeds = updatedMatches.some(m => m.loserNextMatchId === nextMatch.id)
 
-        if (matchIndex === 0) {
-          nextMatch.participant1 = winner
-        } else if (matchIndex === 1) {
-          nextMatch.participant2 = winner
-        } else {
+        if (hasLoserFeeds) {
+          // This match receives both a loser from winners bracket and winner from losers bracket
+          // The winner from losers bracket should go to participant1 or the first empty slot
           if (!nextMatch.participant1) {
             nextMatch.participant1 = winner
           } else if (!nextMatch.participant2) {
             nextMatch.participant2 = winner
           }
+        } else {
+          // Regular losers bracket advancement
+          const previousMatches = updatedMatches.filter(m => m.nextMatchId === nextMatch.id)
+          const matchIndex = previousMatches.findIndex(m => m.id === currentMatch.id)
+
+          if (matchIndex === 0) {
+            nextMatch.participant1 = winner
+          } else if (matchIndex === 1) {
+            nextMatch.participant2 = winner
+          } else {
+            if (!nextMatch.participant1) {
+              nextMatch.participant1 = winner
+            } else if (!nextMatch.participant2) {
+              nextMatch.participant2 = winner
+            }
+          }
+        }
+
+        // Check if the next match now has a BYE opponent and auto-advance if so
+        updatedMatches = checkAndAutoWinBYE(updatedMatches)
+
+        // If next match has auto-win, recursively advance
+        const updatedNextMatch = updatedMatches.find(m => m.id === nextMatch.id)
+        if (updatedNextMatch?.winner && updatedNextMatch.participant1 && updatedNextMatch.participant2) {
+          const nextWinnerId = updatedNextMatch.winner.id
+          const nextLoserId = updatedNextMatch.winner.id === updatedNextMatch.participant1.id
+            ? updatedNextMatch.participant2.id
+            : updatedNextMatch.participant1.id
+
+          updatedMatches = autoAdvanceWinners(
+            updatedMatches,
+            updatedNextMatch.id,
+            nextWinnerId,
+            nextLoserId,
+            participants,
+            bracketType
+          )
         }
       }
     }
 
-    // Handle grand finals
+    // Advance to grand finals
     if (currentMatch.id === 'grand-finals' && winner) {
       // Grand finals winner is the tournament winner - no advancement needed
     }
