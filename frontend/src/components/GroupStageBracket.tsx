@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Match, Participant, GroupStanding } from '../types'
 import SingleEliminationBracket from './SingleEliminationBracket'
 import { generateKnockoutMatches } from '../utils/bracketGenerator'
+import { autoAdvanceWinners } from '../utils/autoAdvance'
 
 interface GroupStageBracketProps {
   matches: Match[]
@@ -136,14 +137,33 @@ function GroupStageBracket({
   const handleKnockoutMatchUpdate = (matchId: string, score1: number, score2: number, winnerId: string) => {
     if (!onUpdateMatch) return
 
-    // Update the knockout match
-    const updatedKnockoutMatches = knockoutMatches.map(match => {
+    // Update the knockout match with scores and winner
+    let updatedKnockoutMatches = knockoutMatches.map(match => {
       if (match.id === matchId) {
         const winner = qualifiedParticipants.find(p => p.id === winnerId)
         return { ...match, score1, score2, winner }
       }
       return match
     })
+
+    // Determine loser
+    const currentMatch = updatedKnockoutMatches.find(m => m.id === matchId)
+    let loserId = ''
+    if (currentMatch && currentMatch.participant1 && currentMatch.participant2) {
+      loserId = winnerId === currentMatch.participant1.id
+        ? currentMatch.participant2.id
+        : currentMatch.participant1.id
+    }
+
+    // Auto-advance winners in knockout phase (treated as single elimination)
+    updatedKnockoutMatches = autoAdvanceWinners(
+      updatedKnockoutMatches,
+      matchId,
+      winnerId,
+      loserId,
+      qualifiedParticipants,
+      'single-elimination'
+    )
 
     setKnockoutMatches(updatedKnockoutMatches)
     onUpdateMatch(matchId, score1, score2, winnerId)
