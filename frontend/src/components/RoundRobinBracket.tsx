@@ -88,10 +88,13 @@ function RoundRobinBracket({ matches, participants, onUpdateMatch }: RoundRobinB
 
     // Sort standings with proper tie-breaking
     let sortedStandings = Array.from(standingsMap.values()).sort((a, b) => {
-      // Primary: Set wins (total score)
+      // Primary: Number of wins
+      if (b.wins !== a.wins) return b.wins - a.wins
+
+      // Secondary: Set wins (total score)
       if (b.setWins !== a.setWins) return b.setWins - a.setWins
 
-      // Secondary: Head-to-head result
+      // Tertiary: Head-to-head result
       const h2h = getHeadToHeadResult(a.participant.id, b.participant.id, matches)
       if (h2h !== 0) return h2h
 
@@ -106,8 +109,8 @@ function RoundRobinBracket({ matches, participants, onUpdateMatch }: RoundRobinB
         const prev = sortedStandings[i - 1]
         const curr = sortedStandings[i]
 
-        // Check if tied with previous player
-        if (curr.setWins === prev.setWins) {
+        // Check if tied with previous player (all three criteria must match)
+        if (curr.wins === prev.wins && curr.setWins === prev.setWins) {
           const h2h = getHeadToHeadResult(curr.participant.id, prev.participant.id, matches)
           if (h2h === 0) {
             // Equal rank

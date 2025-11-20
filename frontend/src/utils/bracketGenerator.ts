@@ -203,9 +203,28 @@ export function generateDoubleEliminationBracket(participants: Participant[]): M
       }
 
       // Link losers from current winners round to these matches
+      // Implement odd/even round alternating pattern to avoid rematches
       const currentWinnersMatches = winnersBracketMatches.filter(m => m.round === winnersRoundIndex)
-      for (let i = 0; i < currentWinnersMatches.length; i++) {
-        currentWinnersMatches[i].loserNextMatchId = typeARoundMatches[i]?.id
+
+      if (winnersRoundIndex % 2 === 1) {
+        // Odd round: same side (top → top, bottom → bottom)
+        for (let i = 0; i < currentWinnersMatches.length; i++) {
+          currentWinnersMatches[i].loserNextMatchId = typeARoundMatches[i]?.id
+        }
+      } else {
+        // Even round: opposite side (top → bottom, bottom → top)
+        const half = Math.floor(currentWinnersMatches.length / 2)
+        for (let i = 0; i < currentWinnersMatches.length; i++) {
+          let targetIndex: number
+          if (i < half) {
+            // Top half of winners → bottom half of losers
+            targetIndex = half + i
+          } else {
+            // Bottom half of winners → top half of losers
+            targetIndex = i - half
+          }
+          currentWinnersMatches[i].loserNextMatchId = typeARoundMatches[targetIndex]?.id
+        }
       }
 
       previousLosersMatches = typeARoundMatches
