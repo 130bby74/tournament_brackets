@@ -46,6 +46,9 @@ export interface GroupStanding {
   losses: number
   draws: number
   points: number
+  setWins: number // Total sets/goals scored
+  setLosses: number // Total sets/goals conceded
+  rank?: number // Actual rank (can be equal for tied players)
 }
 
 export interface RoundRobinStanding {
@@ -55,4 +58,7 @@ export interface RoundRobinStanding {
   draws: number
   points: number
   matchesPlayed: number
+  setWins: number // Total sets/goals scored
+  setLosses: number // Total sets/goals conceded
+  rank?: number // Actual rank (can be equal for tied players)
 }

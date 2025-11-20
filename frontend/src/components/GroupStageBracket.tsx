@@ -92,6 +92,28 @@ function GroupStageBracket({
     }
   }
 
+  // Helper function to get head-to-head result between two participants
+  const getHeadToHeadResult = (p1Id: string, p2Id: string, matches: Match[]): number => {
+    const h2hMatch = matches.find(m =>
+      (m.participant1?.id === p1Id && m.participant2?.id === p2Id) ||
+      (m.participant1?.id === p2Id && m.participant2?.id === p1Id)
+    )
+
+    if (!h2hMatch || h2hMatch.score1 === undefined || h2hMatch.score2 === undefined) {
+      return 0
+    }
+
+    if (h2hMatch.participant1?.id === p1Id) {
+      if (h2hMatch.score1 > h2hMatch.score2) return 1 // p1 won
+      if (h2hMatch.score1 < h2hMatch.score2) return -1 // p2 won
+    } else {
+      if (h2hMatch.score2 > h2hMatch.score1) return 1 // p1 won
+      if (h2hMatch.score2 < h2hMatch.score1) return -1 // p2 won
+    }
+
+    return 0 // draw
+  }
+
   const calculateGroupStandings = (matches: Match[], participants: Participant[]): GroupStanding[] => {
     const standingsMap = new Map<string, GroupStanding>()
 
@@ -102,6 +124,8 @@ function GroupStageBracket({
         losses: 0,
         draws: 0,
         points: 0,
+        setWins: 0,
+        setLosses: 0,
       })
     })
 
@@ -109,6 +133,12 @@ function GroupStageBracket({
       if (match.participant1 && match.participant2 && match.score1 !== undefined && match.score2 !== undefined) {
         const standing1 = standingsMap.get(match.participant1.id)!
         const standing2 = standingsMap.get(match.participant2.id)!
+
+        // Track set wins/losses
+        standing1.setWins += match.score1
+        standing1.setLosses += match.score2
+        standing2.setWins += match.score2
+        standing2.setLosses += match.score1
 
         if (match.score1 > match.score2) {
           standing1.wins++
@@ -127,11 +157,46 @@ function GroupStageBracket({
       }
     })
 
-    return Array.from(standingsMap.values()).sort((a, b) => {
-      if (b.points !== a.points) return b.points - a.points
-      if (b.wins !== a.wins) return b.wins - a.wins
-      return a.participant.name.localeCompare(b.participant.name)
+    // Sort standings with proper tie-breaking
+    let sortedStandings = Array.from(standingsMap.values()).sort((a, b) => {
+      // Primary: Set wins (total score)
+      if (b.setWins !== a.setWins) return b.setWins - a.setWins
+
+      // Secondary: Head-to-head result
+      const h2h = getHeadToHeadResult(a.participant.id, b.participant.id, matches)
+      if (h2h !== 0) return h2h
+
+      // If still tied, they'll have equal rank
+      return 0
     })
+
+    // Assign ranks (allowing for ties)
+    let currentRank = 1
+    for (let i = 0; i < sortedStandings.length; i++) {
+      if (i > 0) {
+        const prev = sortedStandings[i - 1]
+        const curr = sortedStandings[i]
+
+        // Check if tied with previous player
+        if (curr.setWins === prev.setWins) {
+          const h2h = getHeadToHeadResult(curr.participant.id, prev.participant.id, matches)
+          if (h2h === 0) {
+            // Equal rank
+            curr.rank = prev.rank
+          } else {
+            currentRank = i + 1
+            curr.rank = currentRank
+          }
+        } else {
+          currentRank = i + 1
+          curr.rank = currentRank
+        }
+      } else {
+        sortedStandings[i].rank = currentRank
+      }
+    }
+
+    return sortedStandings
   }
 
   const handleKnockoutMatchUpdate = (matchId: string, score1: number, score2: number, winnerId: string) => {
@@ -217,6 +282,9 @@ function GroupStageBracket({
                             L
                           </th>
                           <th className="px-4 py-2 text-center text-xs font-semibold text-gray-700 uppercase">
+                            Sets
+                          </th>
+                          <th className="px-4 py-2 text-center text-xs font-semibold text-gray-700 uppercase">
                             Pts
                           </th>
                           <th className="px-4 py-2 text-center text-xs font-semibold text-gray-700 uppercase">
@@ -226,11 +294,12 @@ function GroupStageBracket({
                       </thead>
                       <tbody className="divide-y divide-gray-200">
                         {group.standings.map((standing, index) => {
-                          const isQualified = index < qualifiersPerGroup
+                          const rank = standing.rank || (index + 1)
+                          const isQualified = rank <= qualifiersPerGroup
                           return (
                             <tr key={standing.participant.id} className={isQualified ? 'bg-green-50' : ''}>
                               <td className="px-4 py-2 text-sm font-medium text-gray-900">
-                                {index + 1}
+                                {rank}
                               </td>
                               <td className="px-4 py-2 text-sm text-gray-900">
                                 {standing.participant.name}
@@ -243,6 +312,9 @@ function GroupStageBracket({
                               </td>
                               <td className="px-4 py-2 text-center text-sm text-red-600 font-semibold">
                                 {standing.losses}
+                              </td>
+                              <td className="px-4 py-2 text-center text-sm font-bold text-blue-600">
+                                {standing.setWins}
                               </td>
                               <td className="px-4 py-2 text-center text-sm font-bold text-purple-600">
                                 {standing.points}
