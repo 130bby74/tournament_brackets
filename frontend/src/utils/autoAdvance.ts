@@ -159,14 +159,31 @@ export function autoAdvanceWinners(
       const loserNextMatch = updatedMatches.find(m => m.id === currentMatch.loserNextMatchId)
       if (loserNextMatch) {
         // Determine which slot the loser should go into
-        // Check which slots are already occupied by checking loserNextMatchId references
-        const matchesFeedingToLoserMatch = updatedMatches.filter(m => m.loserNextMatchId === loserNextMatch.id)
-        const currentMatchIndexInFeeders = matchesFeedingToLoserMatch.findIndex(m => m.id === currentMatch.id)
+        // Check if this match also receives winners from previous losers round
+        const winnersFromLosersFeedingToMatch = updatedMatches.filter(m =>
+          m.id.startsWith('l-') && m.nextMatchId === loserNextMatch.id
+        )
 
-        if (currentMatchIndexInFeeders === 0 || !loserNextMatch.participant1) {
-          loserNextMatch.participant1 = loser
+        // If losers bracket winners feed here, they take participant1, losers from winners take participant2
+        // Otherwise, use index-based placement
+        if (winnersFromLosersFeedingToMatch.length > 0) {
+          // This match receives both winners from losers + losers from winners
+          // Winners from losers go to participant1, losers from winners go to participant2
+          if (!loserNextMatch.participant2) {
+            loserNextMatch.participant2 = loser
+          } else if (!loserNextMatch.participant1) {
+            loserNextMatch.participant1 = loser
+          }
         } else {
-          loserNextMatch.participant2 = loser
+          // Regular loser bracket placement (first round)
+          const matchesFeedingToLoserMatch = updatedMatches.filter(m => m.loserNextMatchId === loserNextMatch.id)
+          const currentMatchIndexInFeeders = matchesFeedingToLoserMatch.findIndex(m => m.id === currentMatch.id)
+
+          if (currentMatchIndexInFeeders === 0 || !loserNextMatch.participant1) {
+            loserNextMatch.participant1 = loser
+          } else {
+            loserNextMatch.participant2 = loser
+          }
         }
 
         // Check if the loser match now has a BYE opponent and auto-advance if so
