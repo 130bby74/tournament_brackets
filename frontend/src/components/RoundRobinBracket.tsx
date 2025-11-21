@@ -109,16 +109,11 @@ function RoundRobinBracket({ matches, participants, onUpdateMatch }: RoundRobinB
         const prev = sortedStandings[i - 1]
         const curr = sortedStandings[i]
 
-        // Check if tied with previous player (all three criteria must match)
+        // Check if tied with previous player (wins and sets must match)
+        // If they match, assign same rank regardless of H2H
         if (curr.wins === prev.wins && curr.setWins === prev.setWins) {
-          const h2h = getHeadToHeadResult(curr.participant.id, prev.participant.id, matches)
-          if (h2h === 0) {
-            // Equal rank
-            curr.rank = prev.rank
-          } else {
-            currentRank = i + 1
-            curr.rank = currentRank
-          }
+          // Equal rank - same wins and sets means same ranking
+          curr.rank = prev.rank
         } else {
           currentRank = i + 1
           curr.rank = currentRank
